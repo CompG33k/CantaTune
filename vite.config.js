@@ -5,7 +5,9 @@ import { VitePWA } from "vite-plugin-pwa";
 export default defineConfig({
   plugins: [
     react(),
+    
     VitePWA({
+      base: "/CantaTune/",
       registerType: "autoUpdate",
       manifest: {
         name: "CantaTune",
