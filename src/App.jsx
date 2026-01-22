@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import YouTubePlayer from "./YouTubePlayer";
-import Waveform from "./Waveform";
+import Waveform from "./WaveForm";
 import { useMic } from "./useMic";
 import "./App.css";
 
