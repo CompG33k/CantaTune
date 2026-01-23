@@ -18,14 +18,25 @@ export default function Waveform({ analyser, height = 120 }) {
 
       analyser.getByteTimeDomainData(buffer);
 
-      // background
+      // clear
       ctx.clearRect(0, 0, w, h);
 
-      // waveform
+      // OPTIONAL: center line so you always see reference
       ctx.beginPath();
-      const slice = w / buffer.length;
+      ctx.strokeStyle = "rgba(255,255,255,0.25)";
+      ctx.lineWidth = 1;
+      ctx.moveTo(0, h / 2);
+      ctx.lineTo(w, h / 2);
+      ctx.stroke();
 
+      // waveform (VISIBLE on dark background)
+      ctx.beginPath();
+      ctx.strokeStyle = "rgba(255,255,255,0.9)";
+      ctx.lineWidth = 2;
+
+      const slice = w / buffer.length;
       let x = 0;
+
       for (let i = 0; i < buffer.length; i++) {
         const v = buffer[i] / 128.0; // 0..2
         const y = (v * h) / 2;
@@ -35,8 +46,8 @@ export default function Waveform({ analyser, height = 120 }) {
 
         x += slice;
       }
-      ctx.stroke();
 
+      ctx.stroke();
       raf = requestAnimationFrame(draw);
     };
 
@@ -53,7 +64,8 @@ export default function Waveform({ analyser, height = 120 }) {
         width: "100%",
         height,
         border: "1px solid #333",
-        borderRadius: 12
+        borderRadius: 12,
+        background: "rgba(255,255,255,0.03)" // subtle backdrop so line pops
       }}
     />
   );
