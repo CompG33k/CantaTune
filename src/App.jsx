@@ -69,12 +69,24 @@ export default function App() {
 [00:09.00]Waveform shows your mic input`
   );
 
+  // Ref so clicking the big lyric box can focus the textarea
+  const lrcRef = useRef(null);
+
   const lyrics = useMemo(() => parseLRC(lrcText), [lrcText]);
   const idx = useMemo(() => currentLyricIndex(lyrics, time), [lyrics, time]);
 
   const prev = lyrics[idx - 1]?.text ?? "";
   const current = lyrics[idx]?.text ?? "";
   const next = lyrics[idx + 1]?.text ?? "";
+
+  const pasteFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) setLrcText(text);
+    } catch {
+      alert("Paste blocked. Click inside the textarea and press Ctrl+V (or long-press → Paste on mobile).");
+    }
+  };
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: 20 }}>
@@ -85,7 +97,7 @@ export default function App() {
 
       {/* Controls */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <button onClick={() => setMicOn(v => !v)}>
+        <button onClick={() => setMicOn((v) => !v)}>
           {micOn ? "Stop Mic" : "Start Mic"}
         </button>
 
@@ -143,34 +155,59 @@ export default function App() {
       <div style={{ marginTop: 22 }}>
         <h2 style={{ fontSize: 16, marginBottom: 8 }}>Lyrics (LRC)</h2>
 
+        {/* Buttons */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+          <button type="button" onClick={pasteFromClipboard}>
+            Paste LRC
+          </button>
+
+          <button type="button" onClick={() => setLrcText("")}>
+            Clear
+          </button>
+        </div>
+
+        {/* Textarea input */}
         <textarea
+          ref={lrcRef}
           value={lrcText}
           onChange={(e) => setLrcText(e.target.value)}
-          rows={7}
+          rows={10}
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
+          placeholder={`Example:
+[00:10.00]First line
+[00:15.20]Second line`}
           style={{
             width: "100%",
             padding: 12,
             borderRadius: 10,
             border: "1px solid #333",
             outline: "none",
-            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+            resize: "vertical"
           }}
         />
 
+        {/* Big lyric display - clickable + double-click paste */}
         <div
           style={{
             marginTop: 14,
             border: "1px solid #333",
             borderRadius: 16,
-            padding: 18
+            padding: 18,
+            cursor: "pointer"
           }}
+          title="Click to focus lyrics input. Double-click to paste from clipboard."
+          onClick={() => lrcRef.current?.focus()}
+          onDoubleClick={pasteFromClipboard}
         >
           <div style={{ fontSize: 22, opacity: 0.55, minHeight: 32 }}>
             {prev}
           </div>
 
           <div style={{ fontSize: 46, fontWeight: 800, lineHeight: 1.1, padding: "10px 0" }}>
-            {current || "—"}
+            {current || "Paste LRC lyrics here"}
           </div>
 
           <div style={{ fontSize: 22, opacity: 0.55, minHeight: 32 }}>
