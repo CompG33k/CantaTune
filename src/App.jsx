@@ -4,6 +4,40 @@ import Waveform from "./WaveForm";
 import { useMic } from "./useMic";
 import "./App.css";
 
+// ----- Pitch Coach helpers -----
+const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+function midiToFreq(midi) {
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+function freqToMidi(freq) {
+  return 69 + 12 * Math.log2(freq / 440);
+}
+
+function centsOff(freq, targetFreq) {
+  return 1200 * Math.log2(freq / targetFreq);
+}
+
+function formatNoteFromMidi(midi) {
+  const m = Math.round(midi);
+  const name = NOTE_NAMES[((m % 12) + 12) % 12];
+  const octave = Math.floor(m / 12) - 1;
+  return `${name}${octave}`;
+}
+
+// Build a list of target notes to choose from (C2 .. B5)
+function buildNoteOptions() {
+  const opts = [];
+  const startMidi = 36; // C2
+  const endMidi = 83; // B5
+  for (let m = startMidi; m <= endMidi; m++) {
+    const label = formatNoteFromMidi(m);
+    opts.push({ midi: m, label, freq: midiToFreq(m) });
+  }
+  return opts;
+}
+
 // --- LRC parser: [mm:ss.xx] line ---
 function parseLRC(text) {
   const lines = text.split(/\r?\n/);
@@ -88,8 +122,48 @@ export default function App() {
     }
   };
 
+  // Pitch coach
+  const noteOptions = useMemo(() => buildNoteOptions(), []);
+  const [targetMidi, setTargetMidi] = useState(57); // A3 default
+  const [toleranceCents, setToleranceCents] = useState(25);
+
+  const targetFreq = useMemo(() => midiToFreq(Number(targetMidi)), [targetMidi]);
+
+  const coach = useMemo(() => {
+    if (!micOn) return { symbol: "🎤", text: "Start mic to get pitch coaching", detail: "" };
+    if (!pitchHz) return { symbol: "…", text: "Listening…", detail: "" };
+
+    const diff = centsOff(pitchHz, targetFreq); // + = sharp (too high), - = flat (too low)
+    const abs = Math.abs(diff);
+
+    if (abs <= toleranceCents) {
+      return { symbol: "✅", text: "On pitch", detail: `${diff.toFixed(0)} cents` };
+    }
+
+    if (diff < 0) {
+      return { symbol: "▲", text: "Sing higher", detail: `${diff.toFixed(0)} cents` };
+    }
+
+    return { symbol: "▼", text: "Sing lower", detail: `+${diff.toFixed(0)} cents` };
+  }, [micOn, pitchHz, targetFreq, toleranceCents]);
+
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: 20 }}>
+    {navigator.userAgent.includes("Slack") && (
+        <div
+          style={{
+            background: "#ffcc00",
+            color: "#000",
+            padding: 10,
+            borderRadius: 8,
+            marginBottom: 12,
+            fontWeight: 700,
+            textAlign: "center"
+          }}
+        >
+          ⚠️ Open in Safari for full features (mic, pitch coach & install)
+        </div>
+      )}
       <h1 style={{ marginBottom: 6 }}>🎤 CantaTune</h1>
       <p style={{ opacity: 0.8, marginTop: 0 }}>
         YouTube karaoke + big synced lyrics + mic waveform + pitch
@@ -111,6 +185,65 @@ export default function App() {
 
         <div style={{ opacity: 0.7 }}>
           YouTube time: {time.toFixed(2)}s
+        </div>
+      </div>
+
+      {/* Pitch Coach */}
+      <div style={{ marginTop: 14, border: "1px solid #333", borderRadius: 16, padding: 14 }}>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ fontSize: 28, fontWeight: 900, minWidth: 44, textAlign: "center" }}>
+            {coach.symbol}
+          </div>
+
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{coach.text}</div>
+            <div style={{ opacity: 0.75 }}>
+              Target: <b>{formatNoteFromMidi(Number(targetMidi))}</b> ({targetFreq.toFixed(1)} Hz)
+              {coach.detail ? ` • ${coach.detail}` : ""}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <label style={{ fontSize: 12, opacity: 0.8 }}>
+              Target note
+              <br />
+              <select
+                value={targetMidi}
+                onChange={(e) => setTargetMidi(Number(e.target.value))}
+                style={{ padding: 8, borderRadius: 10 }}
+              >
+                {noteOptions.map((n) => (
+                  <option key={n.midi} value={n.midi}>
+                    {n.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label style={{ fontSize: 12, opacity: 0.8 }}>
+              Tolerance (cents)
+              <br />
+              <input
+                type="number"
+                min={5}
+                max={100}
+                value={toleranceCents}
+                onChange={(e) => setToleranceCents(Number(e.target.value))}
+                style={{ width: 90, padding: 8, borderRadius: 10 }}
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (!pitchHz) return;
+                setTargetMidi(Math.round(freqToMidi(pitchHz)));
+              }}
+              title="Sets the target note to whatever you're currently singing"
+            >
+              Set target to current
+            </button>
+          </div>
         </div>
       </div>
 
@@ -155,15 +288,33 @@ export default function App() {
       <div style={{ marginTop: 22 }}>
         <h2 style={{ fontSize: 16, marginBottom: 8 }}>Lyrics (LRC)</h2>
 
-        {/* Buttons */}
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-          <button type="button" onClick={pasteFromClipboard}>
-            Paste LRC
-          </button>
+        {/* LRC links */}
+        <div style={{ marginTop: 10, fontSize: 13, opacity: 0.85 }}>
+          <div style={{ marginBottom: 6, fontWeight: 700 }}>Need LRC files?</div>
+          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
+            <li>
+              <a href="https://lrclib.net/" target="_blank" rel="noreferrer">LRCLIB</a>{" "}
+              (open-source synced lyrics database)
+            </li>
+            <li>
+              <a href="https://lrc-get.vercel.app/" target="_blank" rel="noreferrer">LRC Get</a>{" "}
+              (download synced/non-synced lyrics)
+            </li>
+            <li>
+              <a href="https://www.lyricsify.com/" target="_blank" rel="noreferrer">Lyricsify</a>{" "}
+              (browse and download LRC)
+            </li>
+            <li>
+              <a href="https://lrcgenerator.com/" target="_blank" rel="noreferrer">LRC Generator</a>{" "}
+              (create your own LRC timings)
+            </li>
+          </ul>
+        </div>
 
-          <button type="button" onClick={() => setLrcText("")}>
-            Clear
-          </button>
+        {/* Buttons */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10, marginTop: 10 }}>
+          <button type="button" onClick={pasteFromClipboard}>Paste LRC</button>
+          <button type="button" onClick={() => setLrcText("")}>Clear</button>
         </div>
 
         {/* Textarea input */}
@@ -202,17 +353,11 @@ export default function App() {
           onClick={() => lrcRef.current?.focus()}
           onDoubleClick={pasteFromClipboard}
         >
-          <div style={{ fontSize: 22, opacity: 0.55, minHeight: 32 }}>
-            {prev}
-          </div>
-
+          <div style={{ fontSize: 22, opacity: 0.55, minHeight: 32 }}>{prev}</div>
           <div style={{ fontSize: 46, fontWeight: 800, lineHeight: 1.1, padding: "10px 0" }}>
             {current || "Paste LRC lyrics here"}
           </div>
-
-          <div style={{ fontSize: 22, opacity: 0.55, minHeight: 32 }}>
-            {next}
-          </div>
+          <div style={{ fontSize: 22, opacity: 0.55, minHeight: 32 }}>{next}</div>
         </div>
 
         <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
